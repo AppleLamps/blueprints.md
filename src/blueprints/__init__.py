@@ -2,17 +2,22 @@
 
 __version__ = "0.1.0"
 
-from .parser import BlueprintParser, Blueprint, Component, BlueprintReference
+from .parser import BlueprintParser, Blueprint, Component, BlueprintReference, Method
 from .generator import CodeGenerator
 from .resolver import BlueprintResolver, ResolvedBlueprint
+from .verifier import CodeVerifier, GenerationVerifier, VerificationResult
 
 __all__ = [
-    "BlueprintParser", 
-    "Blueprint", 
-    "Component", 
+    "BlueprintParser",
+    "Blueprint",
+    "Component",
     "BlueprintReference",
-    "CodeGenerator", 
+    "Method",
+    "CodeGenerator",
     "BlueprintResolver",
     "ResolvedBlueprint",
+    "CodeVerifier",
+    "GenerationVerifier",
+    "VerificationResult",
     "__version__"
 ]

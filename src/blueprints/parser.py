@@ -85,11 +85,13 @@ class CompactBlueprintParser:
                 deps_str = line[5:].strip()
                 refs = self._parse_blueprint_refs(deps_str)
                 blueprint.blueprint_refs = refs
+                i += 1
                 
             elif line.startswith('notes:'):
                 # Parse notes
                 notes_str = line[6:].strip()
                 blueprint.notes = [n.strip() for n in notes_str.split(',')]
+                i += 1
                 
             elif line and not line.startswith('#'):
                 # Parse component
@@ -97,9 +99,11 @@ class CompactBlueprintParser:
                 if component:
                     blueprint.components.append(component)
                     # Skip lines that belong to this component
-                    i = self._find_component_end(lines, i)
-            
-            i += 1
+                    i = self._find_component_end(lines, i) + 1
+                else:
+                    i += 1
+            else:
+                i += 1
         
         return blueprint
     
@@ -136,17 +140,30 @@ class CompactBlueprintParser:
         """Parse a component starting at the given line."""
         line = lines[start_idx].strip()
         
-        # Check for type alias (TypeName = ...)
+        # Check for type alias (TypeName = Type or explicit type alias)
+        # Skip lines with ':' in left-hand side as they should be handled by constant regex
         if '=' in line and not line.startswith('-'):
             parts = line.split('=', 1)
             if len(parts) == 2:
                 name = parts[0].strip()
                 value = parts[1].strip()
-                return Component(type="type_alias", name=name, value=value)
+                # Skip if left-hand side contains ':' (let constant regex handle it)
+                if ':' not in name:
+                    # Only treat as type alias if name is PascalCase or contains "type" keyword
+                    if (name[0].isupper() and any(c.islower() for c in name)) or 'type' in name.lower():
+                        return Component(type="type_alias", name=name, value=value)
+                    # Otherwise treat as constant if it looks like one
+                    elif name.isupper() and '_' in name:
+                        return Component(
+                            type="constant",
+                            name=name,
+                            properties={"type": "auto"},
+                            value=value
+                        )
         
         # Check for constant (CONSTANT_NAME: type = value)
-        if re.match(r'^[A-Z_]+:', line):
-            match = re.match(r'^([A-Z_]+):\s*([^=]+)(?:\s*=\s*(.+))?$', line)
+        if re.match(r'^[A-Z][A-Z0-9_]*:', line):
+            match = re.match(r'^([A-Z][A-Z0-9_]*):\s*([^=]+)(?:\s*=\s*(.+))?$', line)
             if match:
                 name, type_str, value = match.groups()
                 return Component(
@@ -168,31 +185,37 @@ class CompactBlueprintParser:
             
             # Parse class members
             i = start_idx + 1
-            while i < len(lines) and (lines[i].strip().startswith('-') or 
+            decorators = []
+            while i < len(lines) and (lines[i].strip().startswith('-') or
                                      lines[i].strip().startswith('@') or
                                      not lines[i].strip()):
                 member_line = lines[i].strip()
                 if member_line.startswith('-'):
                     method = self._parse_method(member_line[1:].strip())
                     if method:
+                        # Apply accumulated decorators
+                        method.decorators.extend(decorators)
                         component.methods.append(method)
+                        decorators = []  # Reset decorators
                 elif member_line.startswith('@'):
-                    # Handle decorator for next method
-                    if i + 1 < len(lines) and lines[i + 1].strip().startswith('-'):
-                        next_method = self._parse_method(lines[i + 1].strip()[1:].strip())
-                        if next_method:
-                            next_method.decorators.append(member_line)
-                            component.methods.append(next_method)
-                        i += 1  # Skip the next line since we processed it
+                    # Accumulate decorators
+                    decorators.append(member_line)
                 i += 1
             
             return component
         
-        # Check for standalone function
-        func_match = re.match(r'^(?:async\s+)?(\w+)\((.*?)\)(?:\s*->\s*(.+?))?:?\s*$', line)
+        # Check for standalone function (with decorator support)
+        func_match = re.match(r'^(?:async\s+)?def\s+(\w+)\((.*?)\)(?:\s*->\s*(.+?))?:?\s*$', line)
         if func_match:
             is_async = line.strip().startswith('async ')
             name, params, return_type = func_match.groups()
+            
+            # Check for preceding decorators
+            decorators = []
+            check_idx = start_idx - 1
+            while check_idx >= 0 and lines[check_idx].strip().startswith('@'):
+                decorators.insert(0, lines[check_idx].strip())
+                check_idx -= 1
             
             # Check for docstring
             docstring = None
@@ -203,7 +226,8 @@ class CompactBlueprintParser:
                 name=name,
                 params=params,
                 return_type=return_type.strip() if return_type else None,
-                is_async=is_async
+                is_async=is_async,
+                decorators=decorators
             )
             
             return Component(
@@ -253,11 +277,27 @@ class CompactBlueprintParser:
         i = start_idx + 1
         while i < len(lines):
             line = lines[i].strip()
-            # Component ends when we hit a new component, deps:, notes:, or empty line followed by non-indented content
-            if (line.startswith('deps:') or 
+            
+            # Skip empty lines and docstrings
+            if not line or line.startswith('"""'):
+                i += 1
+                continue
+                
+            # Component ends when we hit a directive or what looks like a new component
+            if (line.startswith('deps:') or
                 line.startswith('notes:') or
-                (line and not line.startswith('-') and not line.startswith('@') and not line.startswith('"""'))):
+                line.startswith('#')):
                 return i - 1
+                
+            # Check if this looks like a new component (not part of current one)
+            if (line and not line.startswith('-') and not line.startswith('@')):
+                # Could be a new function, class, constant, or type alias
+                if (re.match(r'^(?:async\s+)?def\s+\w+\(', line) or  # function
+                    re.match(r'^\w+(?:\([^)]*\))?:?\s*$', line) or  # class
+                    re.match(r'^[A-Z][A-Z0-9_]*:', line) or  # constant
+                    ('=' in line and not line.startswith('-'))):  # type alias or assignment
+                    return i - 1
+            
             i += 1
         return len(lines) - 1
 

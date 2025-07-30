@@ -52,7 +52,9 @@ class CodeGenerator:
         )
         
         if response.status_code != 200:
-            raise RuntimeError(f"OpenRouter API request failed with status {response.status_code}: {response.text}")
+            # Limit error message to avoid huge payloads
+            error_text = response.text[:1024] + "..." if len(response.text) > 1024 else response.text
+            raise RuntimeError(f"OpenRouter API request failed with status {response.status_code}: {error_text}")
         
         response_data = response.json()
         return response_data["choices"][0]["message"]["content"]
@@ -112,22 +114,25 @@ class CodeGenerator:
         # Remove any markdown code blocks if present
         lines = response.strip().split('\n')
         
-        # Check if response is wrapped in code blocks
-        if lines[0].startswith('```'):
-            # Find the closing code block
-            code_lines = []
-            in_code_block = False
-            for line in lines:
-                if line.startswith('```') and not in_code_block:
-                    in_code_block = True
-                    continue
-                elif line.startswith('```') and in_code_block:
-                    break
-                elif in_code_block:
-                    code_lines.append(line)
+        # Look for code blocks anywhere in the response
+        code_lines = []
+        in_code_block = False
+        for line in lines:
+            if line.startswith('```') and not in_code_block:
+                # Skip opening fence (may include language like ```python)
+                in_code_block = True
+                continue
+            elif line.startswith('```') and in_code_block:
+                # Found closing fence
+                break
+            elif in_code_block:
+                code_lines.append(line)
+        
+        # Return extracted code if we found any
+        if code_lines:
             return '\n'.join(code_lines)
         
-        # If no code blocks, return as is
+        # If no code blocks or empty extraction, return as is
         return response.strip()
     
     
@@ -242,12 +247,7 @@ class CodeGenerator:
     
     def _determine_output_path(self, blueprint: 'Blueprint', output_dir: Path, language: str) -> Path:
         """Determine the output file path for a blueprint."""
-        if blueprint.file_path:
-            blueprint_dir = blueprint.file_path.parent
-            filename = f"{blueprint.file_path.stem}{self._get_file_extension(language)}"
-            return blueprint_dir / filename
-        
-        # Fallback to output_dir structure
+        # Always use output_dir to avoid polluting docs directory
         module_parts = blueprint.module_name.split('.')
         filename = f"{module_parts[-1]}{self._get_file_extension(language)}"
         
@@ -569,10 +569,14 @@ class CodeGenerator:
         
         # Collect all unique directories that contain Python files
         python_dirs = set()
+        module_to_path = {}
+        
         for module_name, file_path in generated_files.items():
             if file_path.suffix == '.py':
                 # Add the parent directory of this Python file
                 python_dirs.add(file_path.parent)
+                # Track module names for proper imports
+                module_to_path[module_name] = file_path
         
         # For each directory with Python files, ensure __init__.py exists
         for dir_path in python_dirs:
@@ -584,8 +588,9 @@ class CodeGenerator:
                 
             # Create __init__.py if it doesn't exist or if force is True
             if not init_path.exists() or force:
-                # Create empty __init__.py file
-                init_path.write_text("")
+                # Generate proper __init__.py content with imports
+                init_content = self._generate_init_content(dir_path, module_to_path)
+                init_path.write_text(init_content)
                 
                 # Generate a module name for tracking
                 # Use the directory name as a simple key
@@ -593,6 +598,23 @@ class CodeGenerator:
                 init_files[module_key] = init_path
         
         return init_files
+    
+    def _generate_init_content(self, dir_path: Path, module_to_path: Dict[str, Path]) -> str:
+        """Generate proper __init__.py content with imports."""
+        imports = []
+        
+        # Find all Python files in this directory
+        for module_name, file_path in module_to_path.items():
+            if file_path.parent == dir_path:
+                # Extract the module name (filename without extension)
+                module_file = file_path.stem
+                if module_file != "__init__":
+                    imports.append(f"from .{module_file} import *")
+        
+        if imports:
+            return "\n".join(imports) + "\n"
+        else:
+            return ""
     
     def _find_project_root(self, resolved: ResolvedBlueprint, main_md_path: Optional[Path] = None) -> Path:
         """Find the project root directory by looking for main.md."""

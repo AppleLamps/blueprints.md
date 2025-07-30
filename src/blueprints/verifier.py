@@ -83,7 +83,9 @@ class CodeVerifier:
         """Type checking with mypy"""
         try:
             import mypy.api
-            return self._run_mypy_check(file_path)
+            # Write code to temp file first
+            temp_file = self._create_temp_file(code)
+            return self._run_mypy_check(temp_file)
         except ImportError:
             return VerificationResult(success=True, warnings=["mypy not available for type checking"])
 
@@ -92,10 +94,18 @@ class CodeVerifier:
         try:
             with open(file_path, 'w') as f:
                 f.write(code)
-            importlib.machinery.SourceFileLoader(
-                file_path.stem,
-                str(file_path)
-            ).load_module()
+            
+            # Use modern importlib approach instead of deprecated load_module
+            spec = importlib.util.spec_from_file_location(file_path.stem, str(file_path))
+            if spec is None or spec.loader is None:
+                return VerificationResult(
+                    success=False,
+                    error_type="runtime",
+                    error_message=f"Could not create module spec for {file_path}"
+                )
+            
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
             return VerificationResult(success=True)
         except Exception as e:
             return VerificationResult(
@@ -173,7 +183,7 @@ class CodeVerifier:
         function_to_import = {
             # SQLAlchemy
             'create_engine': 'from sqlalchemy import create_engine',
-            'sessionmaker': 'from sqlalchemy.orm import sessionmaker', 
+            'sessionmaker': 'from sqlalchemy.orm import sessionmaker',
             'declarative_base': 'from sqlalchemy.orm import declarative_base',
             'Session': 'from sqlalchemy.orm import Session',
             'Column': 'from sqlalchemy import Column',
@@ -195,6 +205,23 @@ class CodeVerifier:
             'Field': 'from pydantic import Field',
         }
         
+        # Use AST to extract function calls and avoid false positives from comments/strings
+        try:
+            tree = ast.parse(code)
+            used_functions = set()
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Name):
+                    used_functions.add(node.id)
+                elif isinstance(node, ast.Attribute):
+                    used_functions.add(node.attr)
+        except SyntaxError:
+            # If AST parsing fails, fall back to simple text search
+            used_functions = set()
+            for function in function_to_import.keys():
+                if function in code:
+                    used_functions.add(function)
+        
         # Extract existing imports
         existing_imports = set()
         import_lines = []
@@ -210,7 +237,7 @@ class CodeVerifier:
         # Check for missing imports
         missing_imports = []
         for function, import_statement in function_to_import.items():
-            if function in code and function not in existing_imports:
+            if function in used_functions and function not in existing_imports:
                 # Check if it's not already imported with a different pattern
                 function_imported = any(function in imp for imp in import_lines)
                 if not function_imported:

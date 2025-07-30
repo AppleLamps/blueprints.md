@@ -67,15 +67,17 @@ class BlueprintResolver:
                 blueprint = self._load_blueprint(md_file)
                 if blueprint:
                     self._blueprint_map[blueprint.module_name] = md_file
-            except Exception:
-                # Skip files that can't be parsed as blueprints
+            except Exception as e:
+                # Log parsing errors for debugging but continue
+                import logging
+                logging.debug(f"Failed to parse blueprint {md_file}: {e}")
                 pass
     
     def _resolve_dependencies(self, blueprint: Blueprint, visited: Set[str]) -> Dict[str, Blueprint]:
         """Recursively resolve all blueprint dependencies."""
         resolved = {}
         
-        # Avoid circular dependencies
+        # Avoid circular dependencies - check before processing
         if blueprint.module_name in visited:
             return resolved
         
@@ -85,10 +87,12 @@ class BlueprintResolver:
         for ref in blueprint.blueprint_refs:
             dep_blueprint = self._resolve_reference(ref, blueprint)
             if dep_blueprint and dep_blueprint.module_name not in resolved:
-                resolved[dep_blueprint.module_name] = dep_blueprint
-                # Recursively resolve dependencies
-                sub_deps = self._resolve_dependencies(dep_blueprint, visited)
-                resolved.update(sub_deps)
+                # Check for circular dependency before adding
+                if dep_blueprint.module_name not in visited:
+                    resolved[dep_blueprint.module_name] = dep_blueprint
+                    # Recursively resolve dependencies
+                    sub_deps = self._resolve_dependencies(dep_blueprint, visited.copy())
+                    resolved.update(sub_deps)
         
         return resolved
     
@@ -117,9 +121,6 @@ class BlueprintResolver:
         if not from_blueprint.file_path:
             return relative_path
         
-        # Get the directory of the current blueprint
-        current_dir = from_blueprint.file_path.parent
-        
         # Count leading dots
         level = 0
         for char in relative_path:
@@ -128,14 +129,39 @@ class BlueprintResolver:
             else:
                 break
         
-        # Navigate up directories
-        for _ in range(level - 1):
-            current_dir = current_dir.parent
-        
         # Get the module part after dots
         module_part = relative_path[level:]
         
-        # Construct absolute module path
+        # Build absolute module path from blueprint's module name
+        if from_blueprint.module_name:
+            current_module_parts = from_blueprint.module_name.split('.')
+            
+            if level == 1:
+                # Single dot - sibling module
+                if len(current_module_parts) > 1:
+                    parent_parts = current_module_parts[:-1]
+                    if module_part:
+                        return '.'.join(parent_parts + [module_part])
+                    else:
+                        return '.'.join(parent_parts)
+                else:
+                    # Top-level module, sibling is just the module name
+                    return module_part if module_part else from_blueprint.module_name
+            else:
+                # Multiple dots - go up multiple levels
+                levels_up = level - 1
+                if len(current_module_parts) > levels_up:
+                    parent_parts = current_module_parts[:-levels_up] if levels_up > 0 else current_module_parts
+                    if module_part:
+                        return '.'.join(parent_parts + [module_part])
+                    else:
+                        return '.'.join(parent_parts)
+        
+        # Fallback to directory-based resolution
+        current_dir = from_blueprint.file_path.parent
+        for _ in range(level - 1):
+            current_dir = current_dir.parent
+        
         if module_part:
             return f"{current_dir.name}.{module_part}"
         else:
@@ -169,7 +195,10 @@ class BlueprintResolver:
             blueprint = self.parser.parse_file(file_path)
             self._cache[str_path] = blueprint
             return blueprint
-        except Exception:
+        except Exception as e:
+            # Log specific parsing errors for debugging
+            import logging
+            logging.debug(f"Failed to load blueprint from {file_path}: {e}")
             return None
     
     def _build_dependency_graph(self, main: Blueprint, dependencies: Dict[str, Blueprint]) -> Dict[str, Set[str]]:
