@@ -1,28 +1,61 @@
-"""Code generator module that uses Claude API to generate code from blueprints."""
+"""Code generator module that uses OpenRouter API to generate code from blueprints."""
 
 import os
+import json
+import requests
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
-from anthropic import Anthropic
 from .parser import Blueprint, Component
 from .resolver import BlueprintResolver, ResolvedBlueprint
 from .config import config as default_config
 
 
 class CodeGenerator:
-    """Generates source code from blueprints using Claude API."""
+    """Generates source code from blueprints using OpenRouter API."""
     
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """Initialize the code generator with an API key."""
         self.api_key = api_key or default_config.get_api_key()
         if not self.api_key:
-            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter.")
+            raise ValueError("OpenRouter API key not provided. Set OPENROUTER_API_KEY environment variable or pass api_key parameter.")
         
-        self.client = Anthropic(api_key=self.api_key)
+        self.client = None  # OpenRouter uses REST API, not a client object
         self.model = model or default_config.default_model
         self.max_tokens = default_config.max_tokens
         self.temperature = default_config.temperature
+        self.api_base_url = "https://openrouter.ai/api/v1"
     
+    def _make_openrouter_request(self, prompt: str) -> str:
+        """Make a request to the OpenRouter API."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/vtemian/blueprints.md",  # Optional, for OpenRouter stats
+        }
+        
+        data = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature
+        }
+        
+        response = requests.post(
+            f"{self.api_base_url}/chat/completions",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code != 200:
+            raise RuntimeError(f"OpenRouter API request failed with status {response.status_code}: {response.text}")
+        
+        response_data = response.json()
+        return response_data["choices"][0]["message"]["content"]
     
     
     def _format_component_for_prompt(self, component: Component) -> list:
@@ -75,7 +108,7 @@ class CodeGenerator:
         return parts
     
     def _extract_code_from_response(self, response: str) -> str:
-        """Extract clean code from Claude's response."""
+        """Extract clean code from OpenRouter's response."""
         # Remove any markdown code blocks if present
         lines = response.strip().split('\n')
         
@@ -299,19 +332,9 @@ class CodeGenerator:
                         print(f"  - {result.error_type}: {result.error_message}")
             else:
                 # Direct generation without verification
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self.max_tokens,
-                    temperature=self.temperature,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ]
-                )
+                response = self._make_openrouter_request(prompt)
                 
-                code = self._extract_code_from_response(response.content[0].text)
+                code = self._extract_code_from_response(response)
             
             # Check if file exists and force flag
             if output_path.exists() and not force:
@@ -914,19 +937,9 @@ class CodeGenerator:
         prompt = self._create_single_blueprint_prompt(blueprint, language, context_parts, dependency_versions)
         
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
+            response = self._make_openrouter_request(prompt)
             
-            return self._extract_code_from_response(response.content[0].text)
+            return self._extract_code_from_response(response)
             
         except Exception as e:
             raise RuntimeError(f"Failed to generate code: {str(e)}")

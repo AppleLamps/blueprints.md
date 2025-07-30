@@ -37,8 +37,8 @@ def main(ctx: click.Context, verbose: bool) -> None:
 )
 @click.option(
     "--api-key",
-    envvar="ANTHROPIC_API_KEY",
-    help="Anthropic API key (can also be set via ANTHROPIC_API_KEY env var)",
+    envvar="OPENROUTER_API_KEY",
+    help="OpenRouter API key (can also be set via OPENROUTER_API_KEY env var)",
 )
 @click.option(
     "--force",
@@ -53,7 +53,7 @@ def main(ctx: click.Context, verbose: bool) -> None:
 )
 @click.pass_context
 def generate(ctx: click.Context, blueprint_file: Path, output: Optional[Path], language: str, api_key: Optional[str], force: bool, verify: bool) -> None:
-    """Generate source code from a blueprint file using Claude API."""
+    """Generate source code from a blueprint file using OpenRouter API."""
     verbose = ctx.obj.get("verbose", False)
 
     if verbose:
@@ -72,7 +72,7 @@ def generate(ctx: click.Context, blueprint_file: Path, output: Optional[Path], l
                 for dep in resolved.dependencies:
                     click.echo(f"    - {dep.module_name}")
         
-        # Generate code using Claude API with dependency context
+        # Generate code using OpenRouter API with dependency context
         generator = CodeGenerator(api_key=api_key)
         
         # Determine output path
@@ -124,8 +124,8 @@ def generate(ctx: click.Context, blueprint_file: Path, output: Optional[Path], l
 )
 @click.option(
     "--api-key",
-    envvar="ANTHROPIC_API_KEY",
-    help="Anthropic API key (can also be set via ANTHROPIC_API_KEY env var)",
+    envvar="OPENROUTER_API_KEY",
+    help="OpenRouter API key (can also be set via OPENROUTER_API_KEY env var)",
 )
 @click.option(
     "--force",
@@ -196,7 +196,7 @@ def generate_project(ctx: click.Context, path: Path, language: str, api_key: Opt
             for i, bp in enumerate(resolved.generation_order, 1):
                 click.echo(f"    {i}. {bp.module_name}")
         
-        # Generate code using Claude API with separate calls
+        # Generate code using OpenRouter API with separate calls
         generator = CodeGenerator(api_key=api_key)
         
         # Pass main.md path for Makefile generation if different from blueprint_file

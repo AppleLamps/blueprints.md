@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "blueprints.md", email = "hello@blueprints.md"},
 ]
-keywords = ["llm", "code-generation", "blueprints", "ai", "claude", "markdown", "development"]
+keywords = ["llm", "code-generation", "blueprints", "ai", "openrouter", "markdown", "development"]
 repository = "https://github.com/vtemian/blueprints.md"
 homepage = "https://github.com/vtemian/blueprints.md"
 classifiers = [
@@ -34,7 +34,7 @@ dependencies = [
     "markdown-it-py>=3.0.0",
     "pyyaml>=6.0.0",
     "watchdog>=4.0.0",
-    "anthropic>=0.18.0",
+    "requests>=2.28.0",
 ]
 
 [project.optional-dependencies]

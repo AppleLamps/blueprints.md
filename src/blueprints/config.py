@@ -11,8 +11,8 @@ class BlueprintsConfig(BaseSettings):
     """Configuration settings for blueprints.md."""
     
     # API Configuration
-    anthropic_api_key: Optional[str] = Field(None, env="ANTHROPIC_API_KEY")
-    default_model: str = Field("claude-3-5-sonnet-20241022", env="BLUEPRINTS_MODEL")
+    openrouter_api_key: Optional[str] = Field(None, env="OPENROUTER_API_KEY")
+    default_model: str = Field("anthropic/claude-3.5-sonnet", env="BLUEPRINTS_MODEL")
     
     # Generation Settings
     default_language: str = Field("python", env="BLUEPRINTS_LANGUAGE")
@@ -35,11 +35,11 @@ class BlueprintsConfig(BaseSettings):
     def get_api_key(self) -> Optional[str]:
         """Get the API key, checking multiple sources."""
         # Check explicit config
-        if self.anthropic_api_key:
-            return self.anthropic_api_key
+        if self.openrouter_api_key:
+            return self.openrouter_api_key
         
         # Check environment variable
-        return os.environ.get("ANTHROPIC_API_KEY")
+        return os.environ.get("OPENROUTER_API_KEY")
 
 
 # Global config instance

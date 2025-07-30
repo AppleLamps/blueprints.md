@@ -1,12 +1,12 @@
 # blueprints.md
 
-blueprints.md allows developers to write concise markdown "blueprints" that describe their code architecture, then automatically generate the complete implementation using Claude AI. Instead of writing boilerplate code, you focus on design and let AI handle the implementation details.
+blueprints.md allows developers to write concise markdown "blueprints" that describe their code architecture, then automatically generate the complete implementation using OpenRouter. Instead of writing boilerplate code, you focus on design and let AI handle the implementation details.
 
 ## Quick Start
 
-1. **Set up your Anthropic API key:**
+1. **Set up your OpenRouter API key:**
    ```bash
-   export ANTHROPIC_API_KEY="your-api-key-here"
+   export OPENROUTER_API_KEY="your-api-key-here"
    ```
 
 2. **Install blueprints.md:**
@@ -107,7 +107,7 @@ CONSTANT_NAME: type = value
 notes: implementation detail 1, performance note, future enhancement
 ```
 
-**Key Feature**: Only blueprint references (with `@` prefix) need to be specified. Standard library imports (`typing`, `datetime`, `os`) and third-party packages (`fastapi`, `sqlalchemy`) are automatically inferred and imported by Claude during generation.
+**Key Feature**: Only blueprint references (with `@` prefix) need to be specified. Standard library imports (`typing`, `datetime`, `os`) and third-party packages (`fastapi`, `sqlalchemy`) are automatically inferred and imported by OpenRouter during generation.
 
 ## How It Works
 
@@ -116,7 +116,7 @@ notes: implementation detail 1, performance note, future enhancement
 3. **Generate Code** - Run `blueprints generate-project` to create complete implementations
 4. **Get Production Code** - Receive fully functional code with imports, error handling, and documentation
 
-The system uses Claude AI to understand your blueprint specifications and generate idiomatic code in your target language, automatically inferring dependencies and following best practices.
+The system uses OpenRouter to understand your blueprint specifications and generate idiomatic code in your target language, automatically inferring dependencies and following best practices.
 
 ## Example: Task Management API
 
@@ -179,8 +179,8 @@ This creates all Python files alongside the blueprints plus a Makefile with:
 ## Configuration
 
 Environment variables:
-- `ANTHROPIC_API_KEY` - Your Anthropic API key (required)
-- `BLUEPRINTS_MODEL` - Claude model to use (default: claude-3-5-sonnet-20241022)
+- `OPENROUTER_API_KEY` - Your OpenRouter API key (required)
+- `BLUEPRINTS_MODEL` - Model to use (default: anthropic/claude-3.5-sonnet)
 - `BLUEPRINTS_LANGUAGE` - Default output language (default: python)
 - `BLUEPRINTS_MAX_TOKENS` - Max tokens for generation (default: 4000)
 - `BLUEPRINTS_TEMPERATURE` - Temperature for generation (default: 0.0)
